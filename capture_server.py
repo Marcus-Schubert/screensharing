@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import socket
-from typing import Optional
+
 from aiohttp import web
-from exceptions import CaptureError
+
 from command_builder import StreamCommandBuilder
+from exceptions import CaptureError
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def get_local_ip() -> str:
 class StreamCaptureServer:
     def __init__(
         self,
-        node_id: Optional[int] = None,
+        node_id: int | None = None,
         host: str = "0.0.0.0",
         port: int = 8080,
         resolution: str = "1080p",

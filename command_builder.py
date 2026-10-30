@@ -1,8 +1,7 @@
 import shutil
-from typing import List, Optional
 
 class StreamCommandBuilder:
-    def __init__(self, node_id: Optional[int], resolution: str, bitrate_mbps: int, fps: int):
+    def __init__(self, node_id: int | None, resolution: str, bitrate_mbps: int, fps: int):
         self.node_id = node_id
         self.resolution = resolution
         self.bitrate_mbps = bitrate_mbps
@@ -17,7 +16,7 @@ class StreamCommandBuilder:
     def resolution_height(self):
         return 1080 if self.resolution == "1080p" else 720
 
-    def build_progressive_command(self) -> List[str]:
+    def build_progressive_command(self) -> list[str]:
         pipewire_src = ["pipewiresrc", f"path={self.node_id}"] if self.node_id else ["pipewiresrc"]
         
         if shutil.which("gst-launch-1.0"):
@@ -31,7 +30,7 @@ class StreamCommandBuilder:
             ]
         raise RuntimeError("gst-launch-1.0 not found")
 
-    def build_hls_command(self, output_dir: str) -> List[str]:
+    def build_hls_command(self, output_dir: str) -> list[str]:
         pipewire_src = ["pipewiresrc", f"path={self.node_id}"] if self.node_id else ["pipewiresrc"]
         
         if shutil.which("gst-launch-1.0"):

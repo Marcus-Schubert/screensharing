@@ -1,10 +1,11 @@
+import asyncio
 import logging
 import threading
-import asyncio
-from typing import List, Optional, Dict
-import zeroconf
+
 import pychromecast
 from pychromecast.models import CastInfo
+import zeroconf
+
 from exceptions import CastError
 
 logger = logging.getLogger(__name__)
@@ -22,16 +23,16 @@ threading.excepthook = _custom_excepthook
 
 class ChromecastManager:
     def __init__(self):
-        self.zconf: Optional[zeroconf.Zeroconf] = None
+        self.zconf: zeroconf.Zeroconf | None = None
         self.browser = None
-        self.active_cast: Optional[pychromecast.Chromecast] = None
-        self.found_devices: Dict[str, pychromecast.Chromecast] = {}
+        self.active_cast: pychromecast.Chromecast | None = None
+        self.found_devices: dict[str, pychromecast.Chromecast] = {}
 
     def _ensure_zeroconf(self):
         if not self.zconf:
             self.zconf = zeroconf.Zeroconf()
 
-    async def discover_devices(self, known_hosts: Optional[List[str]] = None, timeout: float = 3.5) -> List[dict]:
+    async def discover_devices(self, known_hosts: list[str] | None = None, timeout: float = 3.5) -> list[dict]:
         """Sucht im lokalen Netzwerk nach Chromecast-Geräten (z.B. Nvidia Shield Pro)."""
         logger.info(f"Suche nach Chromecast-Geräten im Netzwerk ({timeout}s)...")
         self._ensure_zeroconf()

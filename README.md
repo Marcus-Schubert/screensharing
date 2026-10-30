@@ -131,4 +131,4 @@ The AI tools were used as pair-programming partners throughout the development p
 
 ## License
 
-This project is currently unlicensed. A license will be added in a future update.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import Optional
+
 from gi.repository import Gio, GLib
 
 logger = logging.getLogger(__name__)
@@ -9,15 +9,15 @@ logger = logging.getLogger(__name__)
 
 class WaylandScreenCastPortal:
     def __init__(self):
-        self.bus: Optional[Gio.DBusConnection] = None
+        self.bus: Gio.DBusConnection | None = None
         self.sender_name: str = ""
-        self.session_handle: Optional[str] = None
-        self.node_id: Optional[int] = None
-        self.loop: Optional[GLib.MainLoop] = None
-        self.error: Optional[str] = None
-        self._thread: Optional[threading.Thread] = None
+        self.session_handle: str | None = None
+        self.node_id: int | None = None
+        self.loop: GLib.MainLoop | None = None
+        self.error: str | None = None
+        self._thread: threading.Thread | None = None
 
-    def start_portal_session(self, timeout: float = 30.0) -> Optional[int]:
+    def start_portal_session(self, timeout: float = 30.0) -> int | None:
         """Startet die Portal-Sitzung. Der Benutzer bestätigt den KDE-Dialog.
 
         Gibt die aktive PipeWire Node ID zurück.
@@ -65,7 +65,7 @@ class WaylandScreenCastPortal:
             self.loop.quit()
         return False
 
-    def _call_portal(self, method: str, params_variant: Optional[str], step: str):
+    def _call_portal(self, method: str, params_variant: str | None, step: str):
         token = f"req_{step}_{int(time.time()*1000)}"
         req_path = f"/org/freedesktop/portal/desktop/request/{self.sender_name}/{token}"
 
