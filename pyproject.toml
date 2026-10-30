@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "screensharing"
+version = "0.1.0"
+description = "Asahi Linux Screen Sharing to Chromecast / Nvidia Shield Pro"
+authors = ["Marcus <marcus@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pychromecast = ">=14.0.0"
+zeroconf = ">=0.131.0"
+aiohttp = ">=3.9.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
