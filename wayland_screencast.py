@@ -18,17 +18,16 @@ class WaylandScreenCastPortal:
         self._thread: threading.Thread | None = None
 
     def start_portal_session(self, timeout: float = 30.0) -> int | None:
-        """Startet die Portal-Sitzung. Der Benutzer bestätigt den KDE-Dialog.
+        """Starts the portal session. The user confirms the KDE dialog.
 
-        Gibt die aktive PipeWire Node ID zurück.
-        """
-        logger.info("🔐 Überfrage Bildschirmfreigabe über xdg-desktop-portal (Bitte im KDE-Dialog erlauben)...")
+        Returns the active PipeWire Node ID."""
+        logger.info("🔐 Requesting screen share via xdg-desktop-portal (Please allow in the KDE dialog)...")
         
         try:
             self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
             self.sender_name = self.bus.get_unique_name()[1:].replace('.', '_')
         except Exception as e:
-            logger.error(f"DBus-Verbindung zum Portal fehlgeschlagen: {e}")
+            logger.error(f"DBus connection to portal failed: {e}")
             return None
 
         self.loop = GLib.MainLoop()
@@ -37,8 +36,8 @@ class WaylandScreenCastPortal:
 
         self._call_portal('CreateSession', None, 'create')
 
-        # GLib Loop in einem separaten Thread laufen lassen, damit DBus Signals empfangen werden
-        # während die Hauptanwendung weiterläuft
+        # Run GLib Loop in a separate thread so DBus signals are received
+        # while the main application continues
         ready_event = threading.Event()
 
         def run_loop():
@@ -49,19 +48,19 @@ class WaylandScreenCastPortal:
         self._thread = threading.Thread(target=run_loop, daemon=True)
         self._thread.start()
 
-        # Warten bis Node ID empfangen wurde oder Abruch/Timeout
+        # Wait until Node ID received or abort/timeout
         ready_event.wait(timeout=timeout)
 
         if self.node_id is not None:
-            logger.info(f"✅ Bildschirmfreigabe erteilt! PipeWire Screen Node ID: {self.node_id}")
+            logger.info(f"✅ Screen share granted! PipeWire Screen Node ID: {self.node_id}")
             return self.node_id
         else:
-            logger.error(f"❌ Bildschirmfreigabe nicht erteilt: {self.error or 'Timeout oder Abgebrochen'}")
+            logger.error(f"❌ Screen share not granted: {self.error or 'Timeout or aborted'}")
             return None
 
     def _on_timeout(self):
         if self.loop and self.loop.is_running():
-            self.error = "Timeout: Dialog zur Bildschirmfreigabe wurde nicht rechtzeitig bestätigt."
+            self.error = "Timeout: Screen share dialog was not confirmed in time."
             self.loop.quit()
         return False
 
@@ -85,7 +84,7 @@ class WaylandScreenCastPortal:
             opts['session_handle_token'] = GLib.Variant('s', f"sess_{int(time.time())}")
             var = GLib.Variant('(a{sv})', (opts,))
         elif step == 'select':
-            opts['types'] = GLib.Variant('u', 1)  # 1 = Monitor (Gesamter Bildschirm)
+            opts['types'] = GLib.Variant('u', 1)  # 1 = Monitor (Full screen)
             opts['multiple'] = GLib.Variant('b', False)
             var = GLib.Variant('(oa{sv})', (params_variant, opts))
         elif step == 'start':
@@ -106,7 +105,7 @@ class WaylandScreenCastPortal:
                 None
             )
         except Exception as e:
-            logger.error(f"Fehler beim DBus-Aufruf {method}: {e}")
+            logger.error(f"Error during DBus call {method}: {e}")
             self.error = str(e)
             if self.loop and self.loop.is_running():
                 self.loop.quit()
@@ -116,8 +115,8 @@ class WaylandScreenCastPortal:
         step = user_data['step']
 
         if code != 0:
-            logger.error(f"Freigabe-Dialog abgebrochen oder fehlgeschlagen in Schritt '{step}' (Code {code})")
-            self.error = f"Freigabe abgelehnt (Code {code})"
+            logger.error(f"Share dialog aborted or failed at step '{step}' (Code {code})")
+            self.error = f"Share rejected (Code {code})"
             if self.loop and self.loop.is_running():
                 self.loop.quit()
             return
@@ -127,7 +126,7 @@ class WaylandScreenCastPortal:
             if self.session_handle:
                 self._call_portal('SelectSources', self.session_handle, 'select')
             else:
-                self.error = "Kein Session Handle vom Portal erhalten"
+                self.error = "No session handle received from portal"
                 if self.loop and self.loop.is_running():
                     self.loop.quit()
 
@@ -140,12 +139,12 @@ class WaylandScreenCastPortal:
             if streams:
                 self.node_id = streams[0][0]
             else:
-                self.error = "Keine Video-Streams vom Portal zurückgeliefert"
+                self.error = "No video streams returned from portal"
             
-            # NICHT loop.quit() aufrufen, damit die DBus Session während der Übertragung offen bleibt!
+            # Do NOT call loop.quit() so the DBus session stays open during streaming!
 
     def close(self):
-        """Schließt die Portal-Sitzung sauber nach Beendigung des Streamings."""
+        """Closes the portal session cleanly after streaming ends."""
         if self.loop and self.loop.is_running():
             self.loop.quit()
         self.session_handle = None

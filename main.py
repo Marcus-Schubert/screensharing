@@ -7,7 +7,7 @@ from capture_server import StreamCaptureServer
 from cast_manager import ChromecastManager
 from wayland_screencast import WaylandScreenCastPortal
 
-# Logging-Konfiguration
+# Logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -29,14 +29,14 @@ async def main():
     print_banner()
 
     parser = argparse.ArgumentParser(description="Asahi Linux Screen Share to Chromecast / Nvidia Shield Pro")
-    parser.add_argument("-d", "--device", type=str, help="Name des Ziel-Chromecast-Geräts (z.B. 'SHIELD')")
-    parser.add_argument("--ip", type=str, help="Direkte IP-Adresse der Nvidia Shield Pro (z.B. 192.168.178.73)")
-    parser.add_argument("-p", "--port", type=int, default=8080, help="Port für den lokalen HTTP Streamer (Standard: 8080)")
-    parser.add_argument("-m", "--mode", choices=["mp4", "webm"], default="mp4", help="Streaming-Modus: 'mp4' (Fragmentiertes MP4, Ultra-Low Latency, Standard) oder 'webm' (Progressive WebM)")
-    parser.add_argument("--res", choices=["1080p", "720p", "native"], default="1080p", help="Ziel-Auflösung (Standard: 1080p)")
-    parser.add_argument("--bitrate", type=int, default=8, help="Bitrate in Mbps (Standard: 8 Mbps für glasklares Bild)")
-    parser.add_argument("--fps", type=int, default=30, help="Bilder pro Sekunde (Standard: 30 FPS)")
-    parser.add_argument("-l", "--list", action="store_true", help="Gefundene Chromecast-Geräte auflisten und beenden")
+    parser.add_argument("-d", "--device", type=str, help="Name of target Chromecast device (e.g. 'SHIELD')")
+    parser.add_argument("--ip", type=str, help="Direct IP address of Nvidia Shield Pro (e.g. 192.168.178.73)")
+    parser.add_argument("-p", "--port", type=int, default=8080, help="Port for the local HTTP streamer (default: 8080)")
+    parser.add_argument("-m", "--mode", choices=["mp4", "webm"], default="mp4", help="Streaming mode: 'mp4' (Fragmented MP4, Ultra-Low Latency, default) or 'webm' (Progressive WebM)")
+    parser.add_argument("--res", choices=["1080p", "720p", "native"], default="1080p", help="Target resolution (default: 1080p)")
+    parser.add_argument("--bitrate", type=int, default=8, help="Bitrate in Mbps (default: 8 Mbps for crystal-clear image)")
+    parser.add_argument("--fps", type=int, default=30, help="Frames per second (default: 30 FPS)")
+    parser.add_argument("-l", "--list", action="store_true", help="List discovered Chromecast devices and exit")
     args = parser.parse_args()
 
     cast_mgr = ChromecastManager()
@@ -44,32 +44,32 @@ async def main():
     server = None
 
     try:
-        # 1. Wayland Bildschirmfreigabe im KDE-Dialog anfordern
+        # 1. Request Wayland screen share via KDE dialog
         node_id = portal.start_portal_session(timeout=30.0)
         if not node_id:
-            logger.error("❌ Bildschirmfreigabe abgebrochen oder fehlgeschlagen.")
+            logger.error("❌ Screen share aborted or failed.")
             sys.exit(1)
 
         known_hosts = [args.ip] if args.ip else None
-        logger.info("Suche nach verfügbaren Chromecast-Geräten im Netzwerk...")
+        logger.info("Searching for available Chromecast devices on network...")
         devices = await cast_mgr.discover_devices(known_hosts=known_hosts, timeout=3.5)
 
         if args.list:
             if not devices:
-                logger.error("❌ Keine Chromecast-Geräte im lokalen Netzwerk gefunden.")
+                logger.error("❌ No Chromecast devices found on local network.")
             else:
-                print("\n🔍 Gefundene Chromecast-Geräte:")
+                print("\n🔍 Found Chromecast devices:")
                 for idx, dev in enumerate(devices, 1):
                     print(f"  [{idx}] {dev['name']} ({dev['model']}) @ {dev['host']}:{dev['port']}")
             sys.exit(0 if devices else 1)
 
         if not devices:
             if args.ip:
-                logger.info(f"Verwende angegebene IP-Adresse direkt: {args.ip}")
+                logger.info(f"Using specified IP address directly: {args.ip}")
                 target_identifier = args.ip
             else:
-                logger.error("❌ Keine Chromecast-Geräte automatisch via mDNS gefunden.")
-                logger.info("Tipp: Du kannst die IP deiner Shield Pro direkt angeben, z.B.:")
+                logger.error("❌ No Chromecast devices found automatically via mDNS.")
+                logger.info("Tip: You can specify your Shield Pro IP directly, e.g.:")
                 logger.info("      python3 main.py --ip 192.168.178.73")
                 sys.exit(1)
         else:
@@ -79,9 +79,9 @@ async def main():
                 target_identifier = args.ip
             elif len(devices) == 1:
                 target_identifier = devices[0]['name']
-                logger.info(f"Automatisch gewählt: {devices[0]['name']} ({devices[0]['host']})")
+                logger.info(f"Automatically selected: {devices[0]['name']} ({devices[0]['host']})")
             else:
-                print("\nBitte wähle das Zielgerät aus:")
+                print("\nPlease select the target device:")
                 for idx, dev in enumerate(devices, 1):
                     print(f"  [{idx}] {dev['name']} ({dev['model']}) @ {dev['host']}")
                 try:
@@ -89,10 +89,10 @@ async def main():
                     idx_choice = int(choice) - 1 if choice else 0
                     target_identifier = devices[idx_choice]['name']
                 except (ValueError, IndexError):
-                    logger.error("Ungültige Auswahl.")
+                    logger.error("Invalid selection.")
                     sys.exit(1)
 
-        # 2. Stream Server starten mit optimierter Auflösung und Bitrate
+        # 2. Start Stream Server with optimized resolution and bitrate
         server = StreamCaptureServer(
             node_id=node_id,
             port=args.port,
@@ -105,13 +105,13 @@ async def main():
         stream_url = server.get_stream_url()
         content_type = server.get_content_type()
         mode_label = "Fragmented MP4 (Ultra-Low Latency)" if args.mode == "mp4" else "WebM Progressive"
-        logger.info(f"📺 Live-Stream bereitgestellt ({mode_label}, {args.res} @ {args.bitrate} Mbps, {args.fps} FPS): {stream_url}")
+        logger.info(f"📺 Live stream ready ({mode_label}, {args.res} @ {args.bitrate} Mbps, {args.fps} FPS): {stream_url}")
 
-        # 3. Stream an Chromecast senden
+        # 3. Send stream to Chromecast
         success = await cast_mgr.cast_stream(target_identifier, stream_url, content_type=content_type)
 
         if not success:
-            logger.error("❌ Screen Sharing konnte nicht gestartet werden.")
+            logger.error("❌ Screen sharing could not be started.")
             sys.exit(1)
 
         print("\n" + "="*60)
@@ -129,12 +129,12 @@ async def main():
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
-        print("\nBeende Screen Sharing...")
+        print("\nStopping screen sharing...")
         cast_mgr.close()
         portal.close()
         if server:
             await server.stop()
-        print("Done. Tschüss! 👋")
+        print("Done. Goodbye! 👋")
 
 
 if __name__ == "__main__":

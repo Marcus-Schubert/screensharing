@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "screensharing"
-version = "0.2.0"
+version = "0.2.1"
 description = "Asahi Linux Screen Sharing to Chromecast / Nvidia Shield Pro"
 authors = ["Marcus <marcus@example.com>"]
 

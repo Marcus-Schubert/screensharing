@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_local_ip() -> str:
-    """Erkennt die lokale LAN/WLAN-IP-Adresse des Asahi-Linux-Systems."""
+    """Detects the local LAN/WLAN IP address of the Asahi Linux system."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(('8.8.8.8', 80))
@@ -50,7 +50,7 @@ class StreamCaptureServer:
         self.app.router.add_get('/stream.mp4', self.handle_stream_mp4)
         self.app.router.add_get('/stream.webm', self.handle_stream_webm)
         
-        # CORS Preflight OPTIONS-Routen
+        # CORS Preflight OPTIONS routes
         self.app.router.add_options('/stream.mp4', self.handle_options)
         self.app.router.add_options('/stream.webm', self.handle_options)
         
@@ -119,7 +119,7 @@ class StreamCaptureServer:
 <body>
     <div class="card">
         <h1>🖥️ Asahi Linux Screen Share ({mode_label})</h1>
-        <p>Live Streaming für Nvidia Shield Pro / Chromecast</p>
+        <p>Live Streaming to Nvidia Shield Pro / Chromecast</p>
         <p><strong>Stream URL:</strong> <code>{self.get_stream_url()}</code></p>
         <p><strong>Content-Type:</strong> <code>{self.get_content_type()}</code></p>
         <p><strong>Settings:</strong> {self.resolution} | {self.bitrate_mbps} Mbps | {self.fps} FPS</p>
@@ -138,7 +138,7 @@ class StreamCaptureServer:
         except Exception as e:
             raise CaptureError(f"Failed to build capture command: {e}")
 
-        logger.info(f"Starte Screen Capture ({self.mode.upper()}): {' '.join(cmd)}")
+        logger.info(f"Starting Screen Capture ({self.mode.upper()}): {' '.join(cmd)}")
 
         self.proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -177,9 +177,9 @@ class StreamCaptureServer:
 
     async def handle_stream_mp4(self, request: web.Request):
         if self.mode != "mp4":
-            raise web.HTTPBadRequest(text="Server läuft im WebM-Modus. Bitte /stream.webm nutzen.")
+            raise web.HTTPBadRequest(text="Server is running in WebM mode. Please use /stream.webm.")
 
-        logger.info(f"Fragmented MP4 Stream-Anfrage ({self.resolution}, {self.bitrate_mbps} Mbps, {self.fps} fps) empfangen von {request.remote}")
+        logger.info(f"Fragmented MP4 stream request ({self.resolution}, {self.bitrate_mbps} Mbps, {self.fps} fps) received from {request.remote}")
         
         transport = request.transport
         if transport:
@@ -215,7 +215,7 @@ class StreamCaptureServer:
                 await response.write(chunk)
                 await response.drain()
         except (ConnectionResetError, asyncio.CancelledError, BrokenPipeError, ConnectionError):
-            logger.info("Client-Verbindung getrennt.")
+            logger.info("Client connection terminated.")
         except Exception as e:
             logger.error(f"Error streaming data: {e}")
         finally:
@@ -226,7 +226,7 @@ class StreamCaptureServer:
 
     async def handle_stream_webm(self, request: web.Request):
         if self.mode != "webm":
-            raise web.HTTPBadRequest(text="Server läuft im MP4-Modus. Bitte /stream.mp4 nutzen.")
+            raise web.HTTPBadRequest(text="Server is running in MP4 mode. Please use /stream.mp4.")
 
         logger.info(f"VP8/WebM Stream-Anfrage empfangen von {request.remote}")
         
@@ -263,7 +263,7 @@ class StreamCaptureServer:
                 await response.write(chunk)
                 await response.drain()
         except (ConnectionResetError, asyncio.CancelledError, BrokenPipeError, ConnectionError):
-            logger.info("Client-Verbindung getrennt.")
+            logger.info("Client connection terminated.")
         except Exception as e:
             logger.error(f"Error streaming data: {e}")
         finally:

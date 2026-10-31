@@ -10,7 +10,7 @@ from exceptions import CastError
 
 logger = logging.getLogger(__name__)
 
-# Zeroconf-Hintergrundthread Ausnahmen beim Beenden abfangen
+# Catch Zeroconf background thread exceptions on shutdown
 _orig_excepthook = threading.excepthook
 
 def _custom_excepthook(args):
@@ -33,8 +33,8 @@ class ChromecastManager:
             self.zconf = zeroconf.Zeroconf()
 
     async def discover_devices(self, known_hosts: list[str] | None = None, timeout: float = 3.5) -> list[dict]:
-        """Sucht im lokalen Netzwerk nach Chromecast-Geräten (z.B. Nvidia Shield Pro)."""
-        logger.info(f"Suche nach Chromecast-Geräten im Netzwerk ({timeout}s)...")
+        """Searches for Chromecast devices (e.g. Nvidia Shield Pro) on the local network."""
+        logger.info(f"Searching for Chromecast devices on network ({timeout}s)...")
         self._ensure_zeroconf()
 
         loop = asyncio.get_running_loop()
@@ -47,19 +47,19 @@ class ChromecastManager:
                     zeroconf_instance=self.zconf
                 )
             except Exception as e:
-                raise CastError(f"Gerätesuche fehlgeschlagen: {e}")
+                raise CastError(f"Device discovery failed: {e}")
 
         try:
             casts, browser = await loop.run_in_executor(None, _sync_discover)
             self.browser = browser
         except Exception as e:
-            logger.warning(f"Hinweis bei der Gerätesuche: {e}")
+            logger.warning(f"Note during device discovery: {e}")
             casts = []
         
         devices = []
         for cast in casts:
             info: CastInfo = cast.cast_info
-            name = info.friendly_name or "Unbenannter Chromecast"
+            name = info.friendly_name or "Unnamed Chromecast"
             self.found_devices[name] = cast
             devices.append({
                 "name": name,
@@ -73,7 +73,7 @@ class ChromecastManager:
         return devices
 
     def stop_discovery(self):
-        """Stoppt die mDNS-Suche geordnet."""
+        """Stops the mDNS discovery gracefully."""
         if self.browser:
             try:
                 self.browser.stop_discovery()
@@ -82,7 +82,7 @@ class ChromecastManager:
             self.browser = None
 
     async def cast_stream(self, device_name_or_ip: str, stream_url: str, content_type: str = "video/webm") -> bool:
-        """Startet das Screen-Sharing auf dem ausgewählten Chromecast-Gerät."""
+        """Starts screen sharing on the selected Chromecast device."""
         self._ensure_zeroconf()
 
         loop = asyncio.get_running_loop()
@@ -91,7 +91,7 @@ class ChromecastManager:
             target_cast = None
             clean_ip = device_name_or_ip.replace('.', '')
             if clean_ip.isdigit():
-                logger.info(f"Verbinde direkt über IP: {device_name_or_ip}")
+                logger.info(f"Connecting directly via IP: {device_name_or_ip}")
                 casts, _ = pychromecast.get_chromecasts(
                     known_hosts=[device_name_or_ip],
                     timeout=3.0,
@@ -108,7 +108,7 @@ class ChromecastManager:
                             break
             
             if not target_cast:
-                raise CastError(f"Gerät '{device_name_or_ip}' nicht gefunden.")
+                raise CastError(f"Device '{device_name_or_ip}' not found.")
             
             target_cast.wait()
             return target_cast
@@ -120,33 +120,33 @@ class ChromecastManager:
             return False
 
         self.active_cast = target_cast
-        logger.info(f"Verbinde mit '{target_cast.cast_info.friendly_name}' ({target_cast.cast_info.host})...")
+        logger.info(f"Connecting to '{target_cast.cast_info.friendly_name}' ({target_cast.cast_info.host})...")
         
         def _sync_play():
             mc = target_cast.media_controller
-            logger.info(f"Sende Stream (Type: {content_type}) an Shield Chromecast: {stream_url}")
+            logger.info(f"Sending stream (Type: {content_type}) to Shield Chromecast: {stream_url}")
             mc.play_media(stream_url, content_type=content_type, title="", stream_type="LIVE")
             mc.block_until_active(timeout=5)
             
         await loop.run_in_executor(None, _sync_play)
         
-        logger.info(f"✅ Screen Sharing erfolgreich gestartet auf '{target_cast.cast_info.friendly_name}'!")
+        logger.info(f"✅ Screen sharing successfully started on '{target_cast.cast_info.friendly_name}'!")
         return True
 
     def stop_cast(self):
-        """Stoppt die Bildschirmübertragung auf der Shield."""
+        """Stops the screen cast on the Shield."""
         if self.active_cast:
             try:
-                logger.info(f"Stoppe Übertragung auf '{self.active_cast.cast_info.friendly_name}'...")
+                logger.info(f"Stopping cast on '{self.active_cast.cast_info.friendly_name}'...")
                 self.active_cast.media_controller.stop()
                 self.active_cast.quit_app()
             except Exception as e:
-                logger.warning(f"Hinweis beim Stoppen des Castings: {e}")
+                logger.warning(f"Note during cast stop: {e}")
             finally:
                 self.active_cast = None
 
     def close(self):
-        """Schließt alle Verbindungssockets und Zeroconf-Instanzen sauber."""
+        """Closes all connection sockets and Zeroconf instances cleanly."""
         self.stop_cast()
         self.stop_discovery()
         if self.zconf:
