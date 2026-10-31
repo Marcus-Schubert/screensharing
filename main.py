@@ -50,33 +50,32 @@ async def main():
             logger.error("❌ Screen share aborted or failed.")
             sys.exit(1)
 
-        known_hosts = [args.ip] if args.ip else None
-        logger.info("Searching for available Chromecast devices on network...")
-        devices = await cast_mgr.discover_devices(known_hosts=known_hosts, timeout=3.5)
+        # Skip device discovery if IP is provided directly
+        if args.ip:
+            logger.info(f"Using specified IP address directly: {args.ip}")
+            target_identifier = args.ip
+            devices = []
+        else:
+            logger.info("Searching for available Chromecast devices on network...")
+            devices = await cast_mgr.discover_devices(known_hosts=None, timeout=3.5)
 
-        if args.list:
+            if args.list:
+                if not devices:
+                    logger.error("❌ No Chromecast devices found on local network.")
+                else:
+                    print("\n🔍 Found Chromecast devices:")
+                    for idx, dev in enumerate(devices, 1):
+                        print(f"  [{idx}] {dev['name']} ({dev['model']}) @ {dev['host']}:{dev['port']}")
+                sys.exit(0 if devices else 1)
+
             if not devices:
-                logger.error("❌ No Chromecast devices found on local network.")
-            else:
-                print("\n🔍 Found Chromecast devices:")
-                for idx, dev in enumerate(devices, 1):
-                    print(f"  [{idx}] {dev['name']} ({dev['model']}) @ {dev['host']}:{dev['port']}")
-            sys.exit(0 if devices else 1)
-
-        if not devices:
-            if args.ip:
-                logger.info(f"Using specified IP address directly: {args.ip}")
-                target_identifier = args.ip
-            else:
                 logger.error("❌ No Chromecast devices found automatically via mDNS.")
                 logger.info("Tip: You can specify your Shield Pro IP directly, e.g.:")
                 logger.info("      python3 main.py --ip 192.168.178.73")
                 sys.exit(1)
-        else:
+
             if args.device:
                 target_identifier = args.device
-            elif args.ip:
-                target_identifier = args.ip
             elif len(devices) == 1:
                 target_identifier = devices[0]['name']
                 logger.info(f"Automatically selected: {devices[0]['name']} ({devices[0]['host']})")
@@ -85,7 +84,7 @@ async def main():
                 for idx, dev in enumerate(devices, 1):
                     print(f"  [{idx}] {dev['name']} ({dev['model']}) @ {dev['host']}")
                 try:
-                    choice = input("\nNummer eingeben [1]: ").strip()
+                    choice = input("\nEnter number [1]: ").strip()
                     idx_choice = int(choice) - 1 if choice else 0
                     target_identifier = devices[idx_choice]['name']
                 except (ValueError, IndexError):
