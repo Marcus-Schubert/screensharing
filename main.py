@@ -32,6 +32,7 @@ async def main():
     parser.add_argument("-d", "--device", type=str, help="Name des Ziel-Chromecast-Geräts (z.B. 'SHIELD')")
     parser.add_argument("--ip", type=str, help="Direkte IP-Adresse der Nvidia Shield Pro (z.B. 192.168.178.73)")
     parser.add_argument("-p", "--port", type=int, default=8080, help="Port für den lokalen HTTP Streamer (Standard: 8080)")
+    parser.add_argument("-m", "--mode", choices=["mp4", "webm"], default="mp4", help="Streaming-Modus: 'mp4' (Fragmentiertes MP4, Ultra-Low Latency, Standard) oder 'webm' (Progressive WebM)")
     parser.add_argument("--res", choices=["1080p", "720p", "native"], default="1080p", help="Ziel-Auflösung (Standard: 1080p)")
     parser.add_argument("--bitrate", type=int, default=8, help="Bitrate in Mbps (Standard: 8 Mbps für glasklares Bild)")
     parser.add_argument("--fps", type=int, default=30, help="Bilder pro Sekunde (Standard: 30 FPS)")
@@ -97,14 +98,17 @@ async def main():
             port=args.port,
             resolution=args.res,
             bitrate_mbps=args.bitrate,
-            fps=args.fps
+            fps=args.fps,
+            mode=args.mode
         )
         await server.start()
         stream_url = server.get_stream_url()
-        logger.info(f"📺 Live-Stream bereitgestellt ({args.res} @ {args.bitrate} Mbps, {args.fps} FPS): {stream_url}")
+        content_type = server.get_content_type()
+        mode_label = "Fragmented MP4 (Ultra-Low Latency)" if args.mode == "mp4" else "WebM Progressive"
+        logger.info(f"📺 Live-Stream bereitgestellt ({mode_label}, {args.res} @ {args.bitrate} Mbps, {args.fps} FPS): {stream_url}")
 
         # 3. Stream an Chromecast senden
-        success = await cast_mgr.cast_stream(target_identifier, stream_url)
+        success = await cast_mgr.cast_stream(target_identifier, stream_url, content_type=content_type)
 
         if not success:
             logger.error("❌ Screen Sharing konnte nicht gestartet werden.")
@@ -112,8 +116,10 @@ async def main():
 
         print("\n" + "="*60)
         print(f" 🎉 SCREEN SHARING AKTIV auf '{target_identifier}'")
-        print(f" ⚙️  Einstellungen: {args.res} Resolution | {args.bitrate} Mbps Bitrate | {args.fps} FPS")
+        print(f" ⚙️  Modus: {mode_label}")
+        print(f" ⚙️  Einstellungen: {args.res} | {args.bitrate} Mbps | {args.fps} FPS")
         print(f" 🔗 Live Stream-URL: {stream_url}")
+        print(f" 📄 Content-Type: {content_type}")
         print(" ⏹️  Drücke STRG+C zum Beenden")
         print("="*60 + "\n")
 

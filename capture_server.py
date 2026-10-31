@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 import socket
+from datetime import datetime, timezone
 
 from aiohttp import web
 
@@ -31,7 +33,8 @@ class StreamCaptureServer:
         port: int = 8080,
         resolution: str = "1080p",
         bitrate_mbps: int = 8,
-        fps: int = 30
+        fps: int = 30,
+        mode: str = "mp4"
     ):
         self.node_id = node_id
         self.host = host
@@ -39,26 +42,52 @@ class StreamCaptureServer:
         self.resolution = resolution
         self.bitrate_mbps = bitrate_mbps
         self.fps = fps
+        self.mode = mode
         self.local_ip = get_local_ip()
         
         self.app = web.Application()
         self.app.router.add_get('/', self.handle_index)
-        self.app.router.add_get('/stream.webm', self.handle_stream)
+        self.app.router.add_get('/stream.mp4', self.handle_stream_mp4)
+        self.app.router.add_get('/stream.webm', self.handle_stream_webm)
+        
+        # CORS Preflight OPTIONS-Routen
+        self.app.router.add_options('/stream.mp4', self.handle_options)
+        self.app.router.add_options('/stream.webm', self.handle_options)
         
         self.runner = None
         self.site = None
         self.proc = None
+        self._stderr_task = None
+        self._lock = asyncio.Lock()
 
     def get_stream_url(self) -> str:
+        if self.mode == "mp4":
+            return f"http://{self.local_ip}:{self.port}/stream.mp4"
         return f"http://{self.local_ip}:{self.port}/stream.webm"
 
+    def get_content_type(self) -> str:
+        if self.mode == "mp4":
+            return "video/mp4"
+        return "video/webm"
+
+    async def handle_options(self, request: web.Request):
+        return web.Response(
+            status=204,
+            headers={
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                'Access-Control-Allow-Headers': '*',
+            }
+        )
+
     async def handle_index(self, request: web.Request):
+        mode_label = "Fragmented MP4 (Ultra-Low Latency)" if self.mode == "mp4" else "WebM Progressive"
         html = f"""<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asahi Linux Screen Sharing (WebM)</title>
+    <title>Asahi Linux Screen Sharing ({self.mode.upper()})</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -83,28 +112,137 @@ class StreamCaptureServer:
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
         }}
         h1 {{ margin-top: 0; color: #38bdf8; }}
-        video {{
-            width: 100%;
-            border-radius: 8px;
-            background: #000;
-            margin-top: 20px;
-        }}
+        p {{ line-height: 1.6; }}
+        code {{ background: rgba(0, 0, 0, 0.4); padding: 4px 8px; border-radius: 4px; }}
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>🖥️ Asahi Linux Screen Share (WebM)</h1>
-        <p>Live WebM Stream für Nvidia Shield Pro / Chromecast</p>
+        <h1>🖥️ Asahi Linux Screen Share ({mode_label})</h1>
+        <p>Live Streaming für Nvidia Shield Pro / Chromecast</p>
         <p><strong>Stream URL:</strong> <code>{self.get_stream_url()}</code></p>
-        <video controls autoplay muted src="/stream.webm"></video>
+        <p><strong>Content-Type:</strong> <code>{self.get_content_type()}</code></p>
+        <p><strong>Settings:</strong> {self.resolution} | {self.bitrate_mbps} Mbps | {self.fps} FPS</p>
     </div>
 </body>
 </html>"""
         return web.Response(text=html, content_type='text/html')
 
-    async def handle_stream(self, request: web.Request):
-        logger.info(f"VP8/WebM Stream-Anfrage ({self.resolution}, {self.bitrate_mbps} Mbps, {self.fps} fps) empfangen von {request.remote}")
+    async def _start_capture(self):
+        builder = StreamCommandBuilder(self.node_id, self.resolution, self.bitrate_mbps, self.fps)
+        try:
+            if self.mode == "mp4":
+                cmd = builder.build_fragmented_mp4_command()
+            else:
+                cmd = builder.build_progressive_command()
+        except Exception as e:
+            raise CaptureError(f"Failed to build capture command: {e}")
+
+        logger.info(f"Starte Screen Capture ({self.mode.upper()}): {' '.join(cmd)}")
+
+        self.proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        async def read_stderr():
+            while True:
+                if not self.proc or not self.proc.stderr:
+                    break
+                line = await self.proc.stderr.readline()
+                if not line:
+                    break
+                msg = line.decode().strip()
+                if msg:
+                    logger.warning(f"GStreamer {self.mode.upper()}: {msg}")
+
+        self._stderr_task = asyncio.create_task(read_stderr())
+
+    async def _stop_capture(self):
+        if self._stderr_task:
+            self._stderr_task.cancel()
+            self._stderr_task = None
+
+        if self.proc and self.proc.returncode is None:
+            try:
+                self.proc.terminate()
+                await asyncio.wait_for(self.proc.wait(), timeout=2.0)
+            except Exception:
+                try:
+                    self.proc.kill()
+                except Exception:
+                    pass
+            self.proc = None
+
+    async def handle_stream_mp4(self, request: web.Request):
+        if self.mode != "mp4":
+            raise web.HTTPBadRequest(text="Server läuft im WebM-Modus. Bitte /stream.webm nutzen.")
+
+        logger.info(f"Fragmented MP4 Stream-Anfrage ({self.resolution}, {self.bitrate_mbps} Mbps, {self.fps} fps) empfangen von {request.remote}")
         
+        transport = request.transport
+        if transport:
+            sock = transport.get_extra_info('socket')
+            if sock:
+                try:
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                except Exception:
+                    pass
+
+        async with self._lock:
+            await self._stop_capture()
+            await self._start_capture()
+
+        response = web.StreamResponse(
+            status=200,
+            reason='OK',
+            headers={
+                'Content-Type': 'video/mp4',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
+        )
+        await response.prepare(request)
+
+        try:
+            while True:
+                if not self.proc or not self.proc.stdout:
+                    break
+                chunk = await self.proc.stdout.read(65536)
+                if not chunk:
+                    break
+                await response.write(chunk)
+                await response.drain()
+        except (ConnectionResetError, asyncio.CancelledError, BrokenPipeError, ConnectionError):
+            logger.info("Client-Verbindung getrennt.")
+        except Exception as e:
+            logger.error(f"Error streaming data: {e}")
+        finally:
+            async with self._lock:
+                await self._stop_capture()
+        
+        return response
+
+    async def handle_stream_webm(self, request: web.Request):
+        if self.mode != "webm":
+            raise web.HTTPBadRequest(text="Server läuft im MP4-Modus. Bitte /stream.mp4 nutzen.")
+
+        logger.info(f"VP8/WebM Stream-Anfrage empfangen von {request.remote}")
+        
+        transport = request.transport
+        if transport:
+            sock = transport.get_extra_info('socket')
+            if sock:
+                try:
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                except Exception:
+                    pass
+
+        async with self._lock:
+            await self._stop_capture()
+            await self._start_capture()
+
         response = web.StreamResponse(
             status=200,
             reason='OK',
@@ -123,58 +261,28 @@ class StreamCaptureServer:
                 if not chunk:
                     break
                 await response.write(chunk)
+                await response.drain()
         except (ConnectionResetError, asyncio.CancelledError, BrokenPipeError, ConnectionError):
             logger.info("Client-Verbindung getrennt.")
         except Exception as e:
             logger.error(f"Error streaming data: {e}")
+        finally:
+            async with self._lock:
+                await self._stop_capture()
         
         return response
 
     async def start(self):
-        # 1. Start GStreamer background process capturing screen and outputting WebM to stdout
-        builder = StreamCommandBuilder(self.node_id, self.resolution, self.bitrate_mbps, self.fps)
-        try:
-            cmd = builder.build_progressive_command()
-        except Exception as e:
-            raise CaptureError(f"Failed to build progressive command: {e}")
-
-        logger.info(f"Starte Screen Capture (WebM): {' '.join(cmd)}")
-
-        self.proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-
-        async def read_stderr():
-            while True:
-                if not self.proc or not self.proc.stderr:
-                    break
-                line = await self.proc.stderr.readline()
-                if not line:
-                    break
-                msg = line.decode().strip()
-                if msg:
-                    logger.error(f"GStreamer WebM: {msg}")
-
-        asyncio.create_task(read_stderr())
-
-        # 2. Start HTTP Server
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
         self.site = web.TCPSite(self.runner, self.host, self.port)
         await self.site.start()
-        logger.info(f"WebM Streaming-Server gestartet unter http://{self.local_ip}:{self.port}")
+        logger.info(f"{self.mode.upper()} Streaming-Server bereit unter {self.get_stream_url()}")
 
     async def stop(self):
-        if self.proc and self.proc.returncode is None:
-            try:
-                self.proc.terminate()
-                await self.proc.wait()
-            except Exception:
-                pass
-            self.proc = None
+        async with self._lock:
+            await self._stop_capture()
 
         if self.runner:
             await self.runner.cleanup()
-            logger.info("WebM Streaming-Server gestoppt.")
+            logger.info("Streaming-Server gestoppt.")
