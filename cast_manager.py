@@ -119,6 +119,9 @@ class ChromecastManager:
             logger.error(str(e))
             return False
 
+        # Stop any existing cast before starting a new one
+        self.stop_cast()
+
         self.active_cast = target_cast
         logger.info(f"Connecting to '{target_cast.cast_info.friendly_name}' ({target_cast.cast_info.host})...")
         
