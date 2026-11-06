@@ -79,11 +79,11 @@ class StreamCommandBuilder:
                 "complexity=low",
                 "rate-control=bitrate",
                 f"bitrate={self.bitrate_bps}",
-                f"gop-size={self.fps}",
+                "gop-size=15",
                 "multi-thread=4", "!",
                 "h264parse", "config-interval=-1", "!",
                 "qtmux",
-                "fragment-duration=1000",
+                "fragment-duration=500",
                 "faststart=true", "!",
                 "fdsink"
             ]
